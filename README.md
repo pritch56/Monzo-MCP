@@ -1,5 +1,12 @@
 # monzo-mcp
 
+[![CI](https://github.com/pritch56/Monzo-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/pritch56/Monzo-MCP/actions/workflows/ci.yml)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)
+![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)
+
+**Ask Claude (or any MCP client) about your own Monzo account: balances, pots and transactions, read-only.**
+
 An **unofficial**, **read-only** [Model Context Protocol](https://modelcontextprotocol.io) server for your
 own Monzo account. It exposes accounts, balances, pots and transactions as normalized JSON over **stdio**
 or **streamable HTTP**. It cannot move money, edit pots, post feed items or register webhooks: the only
@@ -9,53 +16,57 @@ non-GET request it ever makes is the OAuth token refresh.
 > and a local fake of the API. Treat your first real authorization as the final test, and read
 > [Unverified assumptions](#unverified-assumptions) before relying on it.
 
-## Disclaimer
+**Before you use it:** this project is not affiliated with Monzo, it is for **your own accounts only**, and
+you need your own OAuth client from Monzo's developer portal. Monzo's developer API is not meant for public
+applications. The full terms are in the [Disclaimer](#disclaimer).
 
-- This project is **not affiliated with, endorsed by or supported by Monzo Bank**. "Monzo" is a trademark
-  of its owner and is used here only to say what the software talks to.
-- It is provided **as is, without warranty of any kind**. It is not financial advice.
-- You must register **your own** API client at <https://developers.monzo.com> and comply with Monzo's
-  terms. Monzo's documentation says: "The Monzo Developer API is not suitable for building public
-  applications." and "You may only connect to your own account or those of a small set of users you
-  explicitly allow."
-- Use it for **your own accounts only**. Do not host it for other people.
+**Contents:** [What you can ask](#what-you-can-ask) · [Quick start](#quick-start) ·
+[MCP client configuration](#mcp-client-configuration) · [Tools](#tools) · [Disclaimer](#disclaimer) ·
+[Unverified assumptions](#unverified-assumptions) · [Limitations](#limitations) · [Security](#security) ·
+[Error codes](#error-codes) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
 
-## Unverified assumptions
+## What you can ask
 
-These are built in and exercised by the tests, but have not been confirmed against the real service:
+Once the server is connected to your MCP client, questions like these are answered from your real data:
 
-- **The `403` body codes.** `forbidden.insufficient_permissions` and `forbidden.verification_required`
-  are taken from Monzo's documentation and community reports. Using them to tell `[consent_expired]` from
-  `[sca_not_approved]` (see [Error codes](#error-codes)) is an inference.
-- **The "90-day re-approval".** Inferred from Monzo's wording about how long data can be synchronised;
-  Monzo documents no exact lifetime and no way to read the expiry. `consent_expires_at` is an estimate.
-- **Whether a pending transaction keeps its `id` when it settles.** The
-  [overlapping-window rule](#always-re-fetch-an-overlapping-window) depends on it for de-duplication.
-- **`expand[]=merchant` on the list endpoint.** Monzo documents it only for the single-transaction
-  endpoint. If the list returns a bare merchant id or `null`, `merchant` is `null` rather than an error.
-- **`/accounts` fields `closed` and `type`.** Treated as optional; a missing `closed` means open.
-- **The sign of `spend_today`.** Passed through unchanged as `spend_today_minor`.
-- **What Monzo answers for an unknown account id.** A `404` is reported as `[account_not_found]`; any
-  other answer falls through to the generic mapping.
-- **The pot-transfer markers** (`scheme` = `uk_retail_pot`, `metadata.pot_id`) and the top-up flag
-  (`is_load`), used only to annotate `notes`.
-- Access-token lifetime, refresh-token rotation and the 5-minute full-history window are as documented by
-  Monzo at the time of writing (October 2026) and may change.
+| Ask | Tools it uses |
+|---|---|
+| "What's my Monzo balance, and how much is in each pot?" | `list_accounts`, `get_balance`, `list_pots` |
+| "List everything I spent on eating out in the last 30 days, biggest first." | `list_transactions` (each row has `category`, `merchant` and `amount_minor`) |
+| "Which card payments are still pending?" | `list_transactions` with `include_pending=true` |
+| "Were any payments declined this week, and why?" | `list_transactions` with `include_declined=true`, `get_transaction` |
+| "Is my Monzo connection still working, and when do I have to re-approve it?" | `get_connection_status` |
+
+The server only returns the rows; the sorting, totalling and explaining is done by the model, so check
+anything that matters. Monzo serves only the last 90 days of transactions (see [Limitations](#limitations)),
+and nothing here can move money or change your account.
 
 ## Quick start
 
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). This package is `uk-bank-mcp-monzo`; the PyPI name `monzo-mcp` belongs to an
-unrelated project, so install this one **from source**:
+The short version, once you have an OAuth client from Monzo (step 1 below):
 
 ```bash
-git clone https://github.com/pritch56/uk-bank-mcp.git
-cd uk-bank-mcp/monzo
+git clone https://github.com/pritch56/Monzo-MCP.git && cd Monzo-MCP && uv sync
+export MONZO_CLIENT_ID="oauth2client_..." MONZO_CLIENT_SECRET="..."
+uv run monzo-mcp-authorize   # log in by e-mail link, then approve in the Monzo app
+uv run monzo-mcp             # stdio server; or add it to your MCP client (below)
+```
+
+The commands take about a minute; registering the OAuth client and approving in the app are the slow
+parts. Each step in full, with PowerShell equivalents:
+
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). This package is `uk-bank-mcp-monzo`; the PyPI
+name `monzo-mcp` belongs to an unrelated project, so install this one **from source**:
+
+```bash
+git clone https://github.com/pritch56/Monzo-MCP.git
+cd Monzo-MCP
 uv sync
 ```
 
 ```powershell
-git clone https://github.com/pritch56/uk-bank-mcp.git
-cd uk-bank-mcp/monzo
+git clone https://github.com/pritch56/Monzo-MCP.git
+cd Monzo-MCP
 uv sync
 ```
 
@@ -123,7 +134,7 @@ Claude Code (`.mcp.json`):
   "mcpServers": {
     "monzo": {
       "command": "uv",
-      "args": ["run", "--directory", "/absolute/path/to/uk-bank-mcp/monzo", "monzo-mcp"],
+      "args": ["run", "--directory", "/absolute/path/to/Monzo-MCP", "monzo-mcp"],
       "env": {
         "MONZO_CLIENT_ID": "${MONZO_CLIENT_ID}",
         "MONZO_CLIENT_SECRET": "${MONZO_CLIENT_SECRET}"
@@ -140,7 +151,7 @@ Claude Desktop (`claude_desktop_config.json`):
   "mcpServers": {
     "monzo": {
       "command": "uv",
-      "args": ["run", "--directory", "/absolute/path/to/uk-bank-mcp/monzo", "monzo-mcp"],
+      "args": ["run", "--directory", "/absolute/path/to/Monzo-MCP", "monzo-mcp"],
       "env": {
         "MONZO_CLIENT_ID": "${MONZO_CLIENT_ID}",
         "MONZO_CLIENT_SECRET": "${MONZO_CLIENT_SECRET}"
@@ -152,27 +163,7 @@ Claude Desktop (`claude_desktop_config.json`):
 
 If your client does not expand `${VAR}`, leave the `env` block out and set the two variables in your user
 environment so the server inherits them. Do not paste secrets into the config file. On Windows use a path
-such as `C:/path/to/uk-bank-mcp/monzo`.
-
-## Always re-fetch an overlapping window
-
-**If you call `list_transactions` repeatedly, every call must overlap the previous one.**
-
-Pending card payments are left out by default, because their amounts can change or disappear on
-settlement. A payment keeps its original `date` when it settles, which can be days later. So a caller
-that fetches consecutive, non-overlapping windows (1st–8th, then 8th–15th) **never sees a payment that
-was still pending at the first fetch**: by the time it settles, its date is behind the next window.
-
-Do this instead:
-
-1. Each fetch reaches back at least to the `earliest_pending_date` returned by the previous fetch.
-   If you do not track that, re-fetch the last **14 days** every time.
-2. De-duplicate on `id` (insert or update by `id`; never append blindly).
-
-Every result reports `pending_excluded` (how many pending payments were left out) and
-`earliest_pending_date` (the date of the oldest one, or `null`), so the overlap can be exact. With
-`include_pending=true` they are returned (`pending: true`) and both fields are `0` / `null`; the same
-re-fetch rule applies, because a pending row can still change.
+such as `C:/path/to/Monzo-MCP`.
 
 ## Tools
 
@@ -264,6 +255,102 @@ Each transaction has exactly this shape:
 
 `transaction_id` must look like `tx_` followed by letters and digits; anything else is rejected with
 `[invalid_request]` before a request is made.
+
+## Always re-fetch an overlapping window
+
+**If you call `list_transactions` repeatedly, every call must overlap the previous one.**
+
+Pending card payments are left out by default, because their amounts can change or disappear on
+settlement. A payment keeps its original `date` when it settles, which can be days later. So a caller
+that fetches consecutive, non-overlapping windows (1st–8th, then 8th–15th) **never sees a payment that
+was still pending at the first fetch**: by the time it settles, its date is behind the next window.
+
+Do this instead:
+
+1. Each fetch reaches back at least to the `earliest_pending_date` returned by the previous fetch.
+   If you do not track that, re-fetch the last **14 days** every time.
+2. De-duplicate on `id` (insert or update by `id`; never append blindly).
+
+Every result reports `pending_excluded` (how many pending payments were left out) and
+`earliest_pending_date` (the date of the oldest one, or `null`), so the overlap can be exact. With
+`include_pending=true` they are returned (`pending: true`) and both fields are `0` / `null`; the same
+re-fetch rule applies, because a pending row can still change.
+
+## Disclaimer
+
+- This project is **not affiliated with, endorsed by or supported by Monzo Bank**. "Monzo" is a trademark
+  of its owner and is used here only to say what the software talks to.
+- It is provided **as is, without warranty of any kind**. It is not financial advice.
+- You must register **your own** API client at <https://developers.monzo.com> and comply with Monzo's
+  terms. Monzo's documentation says: "The Monzo Developer API is not suitable for building public
+  applications." and "You may only connect to your own account or those of a small set of users you
+  explicitly allow."
+- Use it for **your own accounts only**. Do not host it for other people.
+
+## Unverified assumptions
+
+These are built in and exercised by the tests, but have not been confirmed against the real service:
+
+- **The `403` body codes.** `forbidden.insufficient_permissions` and `forbidden.verification_required`
+  are taken from Monzo's documentation and community reports. Using them to tell `[consent_expired]` from
+  `[sca_not_approved]` (see [Error codes](#error-codes)) is an inference.
+- **The "90-day re-approval".** Inferred from Monzo's wording about how long data can be synchronised;
+  Monzo documents no exact lifetime and no way to read the expiry. `consent_expires_at` is an estimate.
+- **Whether a pending transaction keeps its `id` when it settles.** The
+  [overlapping-window rule](#always-re-fetch-an-overlapping-window) depends on it for de-duplication.
+- **`expand[]=merchant` on the list endpoint.** Monzo documents it only for the single-transaction
+  endpoint. If the list returns a bare merchant id or `null`, `merchant` is `null` rather than an error.
+- **`/accounts` fields `closed` and `type`.** Treated as optional; a missing `closed` means open.
+- **The sign of `spend_today`.** Passed through unchanged as `spend_today_minor`.
+- **What Monzo answers for an unknown account id.** A `404` is reported as `[account_not_found]`; any
+  other answer falls through to the generic mapping.
+- **The pot-transfer markers** (`scheme` = `uk_retail_pot`, `metadata.pot_id`) and the top-up flag
+  (`is_load`), used only to annotate `notes`.
+- Access-token lifetime, refresh-token rotation and the 5-minute full-history window are as documented by
+  Monzo at the time of writing (October 2026) and may change.
+
+## Limitations
+
+- **Consent lasts about 90 days.** After that, token refresh may still succeed while every call returns
+  `403`. `get_connection_status` warns from 14 days before the estimated date. Re-run
+  `monzo-mcp-authorize` to renew.
+- **90 days of history.** Monzo serves the full history only for 5 minutes after you approve access in
+  the app; after that, only the last 90 days.
+- **Rate limits are unpublished.** A `429` is reported as `[rate_limited]` and never retried.
+- **Rotating, single-use refresh tokens.** See [Token storage](#token-storage). One process per OAuth
+  client.
+- **A confidential client is required**; a non-confidential client's access token simply expires after a
+  few hours.
+- **Pending payments** change or vanish; see
+  [Always re-fetch an overlapping window](#always-re-fetch-an-overlapping-window).
+- Dates are Europe/London. Monzo's `created` time, not the settlement time, decides a transaction's date.
+
+## Security
+
+- **Everything textual is untrusted third-party input.** Transaction descriptions, merchant names, notes,
+  account and pot names are written by merchants, payers and other parties. They can contain
+  prompt-injection text aimed at the model reading them, or spreadsheet formulas. Do not pair this server
+  with tools that can run shell commands or send e-mail without your confirmation. Anything that writes
+  these values to a spreadsheet must neutralise cells starting with `=`, `+`, `-` or `@`.
+- **The token file is plaintext.** Anyone who can read it can read your bank data until the consent
+  lapses. It is written atomically and restricted to your user: mode `0600` on Linux and macOS; on
+  Windows, inherited permissions are removed and only your account is granted access (`icacls`; a failure
+  is logged as a warning, so check the log on first run). Prefer an encrypted disk or a secret manager.
+- **`MONZO_TOKEN_STORE=module:factory` executes code** named in the environment. Anyone who can set that
+  variable can run code as the server.
+- **The seed variables are secrets**, and so is the client secret. Keep them out of shell history, config
+  files and logs. `monzo-mcp-authorize` never prints token values.
+- **The HTTP transport is plain HTTP with one static bearer token.** Put it behind TLS (a reverse proxy
+  or tunnel), set `MONZO_MCP_AUTH_TOKEN` **even on loopback** (any local process, and possibly a web page in
+  your browser, can otherwise reach it), and rotate the token if it leaks.
+- **Proxy environment variables are honoured** (`HTTPS_PROXY` and friends). A proxy configured there
+  sees the connection metadata; a TLS-intercepting one sees your tokens.
+- **`MONZO_API_BASE` is a test hook.** It is refused unless it is `https://` or a loopback address, but
+  pointing it anywhere else still sends your tokens there.
+- The authorize helper ignores (HTTP 400) any callback without the right `state` and keeps waiting, so a
+  stray or hostile local request can neither inject a code nor abort the flow.
+
+To report a vulnerability see [SECURITY.md](SECURITY.md).
 
 ## Error codes
 
@@ -397,49 +484,6 @@ The endpoint is `http://<host>:<port>/mcp` (stateless, JSON responses).
 - Behind a reverse proxy or tunnel, set `MONZO_MCP_ALLOWED_HOSTS=your.domain` so the SDK's DNS-rebinding
   protection accepts the forwarded `Host` header.
 - This is **plain HTTP**. Put it behind TLS. See [Security](#security).
-
-## Limitations
-
-- **Consent lasts about 90 days.** After that, token refresh may still succeed while every call returns
-  `403`. `get_connection_status` warns from 14 days before the estimated date. Re-run
-  `monzo-mcp-authorize` to renew.
-- **90 days of history.** Monzo serves the full history only for 5 minutes after you approve access in
-  the app; after that, only the last 90 days.
-- **Rate limits are unpublished.** A `429` is reported as `[rate_limited]` and never retried.
-- **Rotating, single-use refresh tokens.** See [Token storage](#token-storage). One process per OAuth
-  client.
-- **A confidential client is required**; a non-confidential client's access token simply expires after a
-  few hours.
-- **Pending payments** change or vanish; see
-  [Always re-fetch an overlapping window](#always-re-fetch-an-overlapping-window).
-- Dates are Europe/London. Monzo's `created` time, not the settlement time, decides a transaction's date.
-
-## Security
-
-- **Everything textual is untrusted third-party input.** Transaction descriptions, merchant names, notes,
-  account and pot names are written by merchants, payers and other parties. They can contain
-  prompt-injection text aimed at the model reading them, or spreadsheet formulas. Do not pair this server
-  with tools that can run shell commands or send e-mail without your confirmation. Anything that writes
-  these values to a spreadsheet must neutralise cells starting with `=`, `+`, `-` or `@`.
-- **The token file is plaintext.** Anyone who can read it can read your bank data until the consent
-  lapses. It is written atomically and restricted to your user: mode `0600` on Linux and macOS; on
-  Windows, inherited permissions are removed and only your account is granted access (`icacls`; a failure
-  is logged as a warning, so check the log on first run). Prefer an encrypted disk or a secret manager.
-- **`MONZO_TOKEN_STORE=module:factory` executes code** named in the environment. Anyone who can set that
-  variable can run code as the server.
-- **The seed variables are secrets**, and so is the client secret. Keep them out of shell history, config
-  files and logs. `monzo-mcp-authorize` never prints token values.
-- **The HTTP transport is plain HTTP with one static bearer token.** Put it behind TLS (a reverse proxy
-  or tunnel), set `MONZO_MCP_AUTH_TOKEN` **even on loopback** (any local process, and possibly a web page in
-  your browser, can otherwise reach it), and rotate the token if it leaks.
-- **Proxy environment variables are honoured** (`HTTPS_PROXY` and friends). A proxy configured there
-  sees the connection metadata; a TLS-intercepting one sees your tokens.
-- **`MONZO_API_BASE` is a test hook.** It is refused unless it is `https://` or a loopback address, but
-  pointing it anywhere else still sends your tokens there.
-- The authorize helper ignores (HTTP 400) any callback without the right `state` and keeps waiting, so a
-  stray or hostile local request can neither inject a code nor abort the flow.
-
-To report a vulnerability see [SECURITY.md](SECURITY.md).
 
 ## Troubleshooting
 
