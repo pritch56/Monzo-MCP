@@ -1,0 +1,43 @@
+# Secrets and credentials - never commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OAuth token stores (plaintext bank access)
+tokens.json
+*.tokens.json
+*-tokens.json
+*_tokens.json
+.monzo-mcp/
+.amex-mcp/
+.nationwide-mcp/
+
+# Bank exports
+statements/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+
+# Tool caches
+.pytest_cache/
+.pytest_tmp/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local databases and editor/agent state
+ruvector.db
+*.db
+.claude/
+.remember/
+.idea/
+.vscode/
+.DS_Store
