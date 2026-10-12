@@ -30,10 +30,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/pritch56/uk-bank-mcp"
-Repository = "https://github.com/pritch56/uk-bank-mcp"
-Issues = "https://github.com/pritch56/uk-bank-mcp/issues"
-Changelog = "https://github.com/pritch56/uk-bank-mcp/blob/main/monzo/CHANGELOG.md"
+Homepage = "https://github.com/pritch56/Monzo-MCP"
+Repository = "https://github.com/pritch56/Monzo-MCP"
+Issues = "https://github.com/pritch56/Monzo-MCP/issues"
+Changelog = "https://github.com/pritch56/Monzo-MCP/blob/main/CHANGELOG.md"
 
 [project.scripts]
 monzo-mcp = "monzo_mcp.server:main"
