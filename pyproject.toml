@@ -1,5 +1,5 @@
 [project]
-name = "uk-bank-mcp-monzo"
+name = "monzo-mcp"
 dynamic = ["version"]
 description = "Unofficial read-only MCP server for the Monzo personal developer API"
 readme = "README.md"

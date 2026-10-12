@@ -72,7 +72,7 @@ def test_readme_says_what_it_must():
     readme = (ROOT / "README.md").read_text("utf-8")
     flat = " ".join(readme.replace(">", " ").split())
     assert "unofficial" in flat.lower().split("##")[0]
-    assert "never run against the live Monzo API" in flat
+    assert "Status: alpha" in flat and "Unverified assumptions" in flat
     assert '"The Monzo Developer API is not suitable for building public applications."' in flat
     assert '"You may only connect to your own account or those of a small set of users you explicitly allow."' in flat
     assert "not affiliated with, endorsed by or supported by Monzo Bank" in flat
@@ -110,7 +110,7 @@ def test_every_error_code_the_code_can_raise_is_in_the_readme():
 def test_pyproject_metadata():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))
     meta = project["project"]
-    assert meta["name"] == "uk-bank-mcp-monzo"
+    assert meta["name"] == "monzo-mcp"
     assert meta["description"].startswith("Unofficial ")
     assert meta["requires-python"] == ">=3.11" and meta["readme"] == "README.md"
     assert meta["license"] == "MIT" and meta["authors"] == [{"name": "pritch56"}]

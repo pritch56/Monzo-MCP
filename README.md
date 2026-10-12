@@ -12,9 +12,10 @@ own Monzo account. It exposes accounts, balances, pots and transactions as norma
 or **streamable HTTP**. It cannot move money, edit pots, post feed items or register webhooks: the only
 non-GET request it ever makes is the OAuth token refresh.
 
-> **Status: alpha, never run against the live Monzo API.** Everything here is tested only against mocks
-> and a local fake of the API. Treat your first real authorization as the final test, and read
-> [Unverified assumptions](#unverified-assumptions) before relying on it.
+> **Status: alpha.** The author runs it against their own live Monzo account for a weekly read-only
+> sync, and it has had no wider use. The automated tests use only mocks and a local fake of the API, and
+> the items under [Unverified assumptions](#unverified-assumptions) have not been confirmed one by one.
+> Check amounts against your Monzo app before relying on it.
 
 **Before you use it:** this project is not affiliated with Monzo, it is for **your own accounts only**, and
 you need your own OAuth client from Monzo's developer portal. Monzo's developer API is not meant for public
@@ -55,7 +56,7 @@ uv run monzo-mcp             # stdio server; or add it to your MCP client (below
 The commands take about a minute; registering the OAuth client and approving in the app are the slow
 parts. Each step in full, with PowerShell equivalents:
 
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). This package is `uk-bank-mcp-monzo`; the PyPI
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). It is not published to PyPI: the PyPI
 name `monzo-mcp` belongs to an unrelated project, so install this one **from source**:
 
 ```bash

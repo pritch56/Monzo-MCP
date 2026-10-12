@@ -3,9 +3,10 @@
 All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.1.0 - unreleased
+## 0.1.0 - 2026-10-12
 
-First public version. Tested only against mocks and a local fake of the Monzo API.
+First public version. The automated tests use mocks and a local fake of the Monzo API; the author also
+runs it against their own live account.
 
 ### Added
 

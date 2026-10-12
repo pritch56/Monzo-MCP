@@ -913,7 +913,7 @@ wheels = [
 ]
 
 [[package]]
-name = "uk-bank-mcp-monzo"
+name = "monzo-mcp"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
